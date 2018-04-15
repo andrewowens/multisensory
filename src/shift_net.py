@@ -508,9 +508,3 @@ class NetClf:
     cam = self.sess.run([self.net_resize.cam], {self.ims_resize_ph : ims, self.samples_ph : samples})
     return cam
 
-
-  # def predict_cam(self, ims, samples_long):
-  #   spec_mix = self.sess.run(self.specgram_op, {self.samples_ph : samples})
-  #   cam = self.sess.run(
-  #     [self.net.vid_net.cam], {self.ims_ph : ims, self.samples_ph : samples})
-  #   return cam

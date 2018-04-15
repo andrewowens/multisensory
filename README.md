@@ -30,6 +30,9 @@ pip install numpy matplotlib pillow scipy
 ./download_sample_data.sh
 ```
 
+## Pretrained audio-visual features
+We have provided the features for our fused audio-visual network. These features were learned through self-supervised learning. Please see `shift_example.py` for a simple example that uses these pretrained features.
+
 ## Audio-visual source separation
 To try the on/off-screen source separation model, run:
 ```bash
@@ -50,11 +53,11 @@ This produces the following videos (click to watch):
 Source: <a href = "https://youtu.be/H9CgWJToF_s"><img src="doc/crossfire_input.jpg" width="200"/></a> Left: <a href = "https://youtu.be/9jPaA8ttI6A"><img src="doc/crossfire_l.jpg" width="200"/></a> Right: <a href = "https://youtu.be/M4ACgIWuiWM"><img src="doc/crossfire_r.jpg" width="200"/></a>
 
 ## Blind (audio-only) source separation
-This baseline trains a [u-net](https://arxiv.org/pdf/1505.04597.pdf) network to minimize a [permutation invariant](https://arxiv.org/pdf/1607.00325) loss.
+This baseline trains a [u-net](https://arxiv.org/pdf/1505.04597.pdf) model to minimize a [permutation invariant](https://arxiv.org/pdf/1607.00325) loss.
 ```bash
 python sep_video.py ../data/translator.mp4 --model unet_pit --duration_mult 4 --out ../results/
 ```
-The model will output the two separated streams in an arbitrary order.
+The model will write the two separated streams in an arbitrary order.
 
 ## Visualizing the locations of sound sources
 To view the self-supervised network's class activation map (CAM), use the `--cam` flag:
@@ -64,6 +67,9 @@ python sep_video.py ../data/translator.mp4 --model full --cam --out ../results/
 This produces a video in which the CAM is overlaid as heat map:
 
 <a href = "https://youtu.be/u99MdLBDnJc"><img src="doc/crossfire_cam.jpg" width="300"/></a>
+
+## Action recognition
+Coming soon!
 
 ## Citation
 ```

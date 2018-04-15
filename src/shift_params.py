@@ -168,6 +168,8 @@ def shift_v1(num_gpus = 1, shift_dur = 4.2):
 
               model_iter = 650000,
               )
+  pr.vid_dur = pr.shift_dur
+  pr.num_samples = int(round(pr.samples_per_frame*pr.sampled_frames))
   #pr.vis_dir = ut.mkdir(pj(pr.resdir, 'vis'))
   return pr
 
@@ -251,5 +253,6 @@ def cam_v1(num_gpus = 1, shift_dur = 4.2):
 
               model_iter = 675000,
               )
+  pr.vid_dur = pr.shift_dur
   pr.num_samples = int(round(pr.samples_per_frame*pr.sampled_frames))
   return pr

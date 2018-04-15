@@ -1,4 +1,4 @@
-import wave, util as ut, os, numpy as np, iputil as ip, img as ig, imtable, pylab as pl, copy
+import wave, util as ut, os, numpy as np, img as ig, imtable, pylab as pl, copy
 import scipy.io.wavfile
 
 class converted_wav:

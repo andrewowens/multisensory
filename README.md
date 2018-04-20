@@ -72,7 +72,7 @@ This produces a video in which the CAM is overlaid as a heat map:
 <a href = "https://youtu.be/u99MdLBDnJc"><img src="doc/crossfire_cam.jpg" width="300"/></a>
 
 ## Action recognition and fine-tuning
-We have provided example code for training an action recognition model (e.g. on [http://crcv.ucf.edu/data/UCF101.php](UCF-101) ) in [videocls.py](videocls.py)). This involves fine-tuning our pretrained, audio-visual network. It is also possible to train this network with only visual data (no audio).
+We have provided example code for training an action recognition model (e.g. on the [UCF-101](http://crcv.ucf.edu/data/UCF101.php) dataset) in [videocls.py](src/videocls.py)). This involves fine-tuning our pretrained, audio-visual network. It is also possible to train this network with only visual data (no audio).
 
 ## Citation
 If you use this code in your research, please consider citing our paper:

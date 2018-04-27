@@ -1,5 +1,5 @@
+# Separate on- and off-screen sound from video file. See README for usage examples.
 import aolib.util as ut, aolib.img as ig, os, numpy as np, tensorflow as tf, tfutil as mu, scipy.io, sys, aolib.imtable as imtable, pylab, argparse, shift_params, shift_net
-import scipy.ndimage as nd
 import sourcesep, sep_params
 import aolib.sound as sound
 from aolib.sound import Sound
@@ -377,7 +377,8 @@ if __name__ == '__main__':
     arg.duration = arg.clip_dur + 0.01
 
   print arg.duration, arg.clip_dur
-  full_dur = min(arg.duration, ut.video_length(arg.vid_file))
+  full_dur = arg.duration
+  #full_dur = min(arg.duration, ut.video_length(arg.vid_file))
   #full_dur = arg.duration
   step_dur = arg.clip_dur/2.
   filled = np.zeros(int(np.ceil(full_dur * pr.samp_sr)), 'bool')

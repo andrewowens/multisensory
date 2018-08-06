@@ -1,6 +1,7 @@
-# Example code for fine-tuning our audio-visual network to solve an action-recognition task.
-# We suggest rewriting this code to suit your own applications, since 
-import numpy as np, tfutil as tfu, aolib.util as ut, copy, aolib.sound as sound, tensorflow as tf, aolib.imtable as imtable
+# Example code for fine-tuning our audio-visual network to solve an
+# action-recognition task.  We suggest rewriting this code, reusing
+# only the parts that are relevant to your application.
+import tfutil as tfu, aolib.util as ut, tensorflow as tf
 import shift_net as shift
 import tensorflow.contrib.slim as slim
 
@@ -18,10 +19,7 @@ def make_net(ims, samples, pr, reuse = True, train = True):
     if pr.use_i3d_logits:
       with tf.variable_scope('RGB', reuse = reuse):
         net = tfu.normalize_ims(ims)
-        #net = tf.Print(net, [tf.reduce_min(net), tf.reduce_max(net)])
-        #i3d_net = i3d_kinetics.InceptionI3d(pr.num_classes, final_endpoint = 'Logits')
         i3d_net = i3d_kinetics.InceptionI3d(pr.num_classes, spatial_squeeze = True, final_endpoint = 'Logits')
-        #logits, _ = i3d_net(net, is_training = train, dropout_keep_prob = 1.)
         logits, _ = i3d_net(net, is_training = train, dropout_keep_prob = keep_prob)
         return ut.Struct(logits = logits, prob = tf.nn.softmax(logits), last_conv = logits)
     else:

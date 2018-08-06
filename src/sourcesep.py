@@ -1,5 +1,5 @@
+# Source separation model + code for training it
 import numpy as np, tfutil as mu, aolib.util as ut, aolib.sound as sound, aolib.img as ig, sep_dset, tensorflow as tf, aolib.imtable as imtable, shift_net, gc, soundrep
-
 import tensorflow.contrib.slim as slim
 
 ed = tf.expand_dims
@@ -12,104 +12,6 @@ cast_int = mu.cast_int
 
 def on_cpu(f):
   return mu.on_cpu(f)
-  #return f()
-
-class NetClf:
-  def __init__(self, pr, model_path, 
-               sess = None, gpu = None, 
-               restore_only_shift = False,
-               input_sr = None):
-    self.pr = pr
-    self.sess = sess
-    self.gpu = gpu
-    self.model_path = model_path
-    self.restore_only_shift = restore_only_shift
-    self.input_sr = input_sr
-
-  def init(self, reset = True):
-    if self.sess is None:
-      print 'Running on:', self.gpu
-      with tf.device(self.gpu):
-        if reset:
-          tf.reset_default_graph()
-          tf.Graph().as_default()
-        pr = self.pr
-        self.sess = tf.Session()
-        self.ims_ph = tf.placeholder(
-          tf.uint8, [1, pr.sampled_frames, pr.crop_im_dim, pr.crop_im_dim, 3])
-        self.samples_ph = tf.placeholder(tf.float32, (1, pr.num_samples, 2))
-
-        crop_spec = lambda x : x[:, :pr.spec_len]
-        samples_trunc = self.samples_ph[:, :pr.sample_len]
-
-        spec_mix, phase_mix = sep_module(pr).stft(samples_trunc[:, :, 0], pr)
-        spec_mix = crop_spec(spec_mix)
-        phase_mix = crop_spec(phase_mix)
-
-        self.specgram_op, phase = map(crop_spec, sep_module(pr).stft(samples_trunc[:, :, 0], pr))
-        self.auto_op = sep_module(pr).istft(self.specgram_op, phase, pr)
-
-        self.net = sep_module(pr).make_net(
-          self.ims_ph, samples_trunc, spec_mix, phase_mix, 
-          pr, reuse = False, train = False)
-        self.spec_pred_fg = self.net.pred_spec_fg
-        self.spec_pred_bg = self.net.pred_spec_bg
-        self.samples_pred_fg = self.net.pred_wav_fg
-        self.samples_pred_bg = self.net.pred_wav_bg
-
-        print 'Restoring from:', self.model_path
-        if self.restore_only_shift:
-          print 'restoring only shift'
-          import tensorflow.contrib.slim as slim
-          var_list = slim.get_variables_to_restore()
-          var_list = [x for x in var_list if x.name.startswith('im/') or x.name.startswith('sf/') or x.name.startswith('joint/')]
-          self.sess.run(tf.global_variables_initializer())
-          tf.train.Saver(var_list).restore(self.sess, self.model_path)
-        else:
-          tf.train.Saver().restore(self.sess, self.model_path)
-        tf.get_default_graph().finalize()
-
-  def predict(self, ims, samples):
-    print 'predict'
-    print 'samples shape:', samples.shape
-    spec_mix = self.sess.run(self.specgram_op, {self.samples_ph : samples})
-    spec_pred, spec_pred_bg, samples_pred_fg, samples_pred_bg = self.sess.run(
-      [self.spec_pred, self.spec_pred_bg, self.samples_pred_fg, self.samples_pred_bg], 
-      {self.ims_ph : ims, self.samples_ph : samples})
-    print 'samples pred shape:', samples.shape
-    return dict(samples_pred_fg = samples_pred_fg, 
-                samples_pred_bg = samples_pred_bg, 
-                samples_mix = samples,
-                spec_pred = spec_pred, 
-                spec_pred_bg = spec_pred_bg, 
-                spec_mix = spec_mix)
-
-  def predict_unmixed(self, ims, samples0, samples1):
-    # undo mixing
-    samples_mix = samples0 + samples1
-    spec_pred_fg, samples_pred_fg, spec_pred_bg, samples_pred_bg = self.sess.run(
-      [self.spec_pred_fg, self.samples_pred_fg, self.spec_pred_bg, self.samples_pred_bg], 
-      {self.ims_ph : ims[None], self.samples_ph : samples_mix[None]})
-    spec0 = self.sess.run(self.specgram_op, {self.samples_ph : samples0[None]})
-    spec1 = self.sess.run(self.specgram_op, {self.samples_ph : samples1[None]})
-    spec_mix = self.sess.run(self.specgram_op, {self.samples_ph : samples_mix[None]})
-    auto0 = self.sess.run(self.auto_op, {self.samples_ph : samples0[None]})
-    auto1 = self.sess.run(self.auto_op, {self.samples_ph : samples1[None]})
-    auto_mix = self.sess.run(self.auto_op, {self.samples_ph : samples_mix[None]})
-    return dict(samples_pred_fg = samples_pred_fg[0],
-                samples_pred_bg = samples_pred_bg[0],
-                spec_pred_fg = spec_pred_fg[0],
-                spec_pred_bg = spec_pred_bg[0],
-                spec0 = spec0[0],
-                spec1 = spec1[0], 
-                spec_mix = spec_mix[0],
-                auto_mix = auto_mix[0],
-                auto0 = auto0[0],
-                auto1 = auto1[0])
-
-  def predict_cam(self, ims, samples):
-    cam = self.sess.run([self.net.vid_net.cam], {self.ims_ph : ims, self.samples_ph : samples})
-    return cam
 
 def read_data(pr, gpus):
   batch = ut.make_mod(pr.batch_size, len(gpus))
@@ -237,55 +139,6 @@ def show_results(ims, samples_mix, samples_gt, spec_mix, spec_gt, spec_pred_fg, 
 
   return np.array([1], np.int64)
 
-# def mix_sounds(samples0, pr, quiet_thresh_db = 40., samples1 = None):
-#   # todo: for PIT
-#   if pr.normalize_rms:
-#     samples0 = mu.normalize_rms(samples0)
-#     if samples1 is not None:
-#       samples1 = mu.normalize_rms(samples1)
-
-#   if samples1 is None:
-#     n = shape(samples0, 0)/2
-#     samples0 = samples0[:, :pr.sample_len]
-#     # samples1 = tf.concat(
-#     #   [samples0[n:, :pr.sample_len],
-#     #    samples0[:n, :pr.sample_len]], axis = 0)
-#     samples1 = samples0[n:]
-#     samples0 = samples0[:n]
-#   else:
-#     samples0 = samples0[:, :pr.sample_len]
-#     samples1 = samples1[:, :pr.sample_len]
-
-
-#   if pr.augment_rms:
-#     print 'Augmenting rms'
-#     scale0 = tf.random_uniform((shape(samples0, 0), 1, 1), 0.9, 1.1)
-#     scale1 = tf.random_uniform((shape(samples1, 0), 1, 1), 0.9, 1.1)
-#     samples0 = scale0 * samples0
-#     samples1 = scale1 * samples1
-
-#   samples_mix = samples0 + samples1
-#   spec_mix, phase_mix = stft(make_mono(samples_mix), pr)
-#   spec0, phase0 = stft(make_mono(samples0), pr)
-#   spec1, phase1 = stft(make_mono(samples1), pr)
-
-#   print 'Before truncating specgram:', shape(spec_mix)
-#   spec_mix = spec_mix[:, :pr.spec_len]
-#   print 'After truncating specgram:', shape(spec_mix)
-#   phase_mix = phase_mix[:, :pr.spec_len]
-#   spec0 = spec0[:, :pr.spec_len]
-#   spec1 = spec1[:, :pr.spec_len]
-#   phase0 = phase0[:, :pr.spec_len]
-#   phase1 = phase1[:, :pr.spec_len]
-
-#   return ut.Struct(
-#     samples = samples_mix, 
-#     phase = phase_mix,
-#     spec = spec_mix,
-#     sample_parts = [samples0, samples1], 
-#     spec_parts = [spec0, spec1],
-#     phase_parts = [phase0, phase1])
-
 def mix_sounds(samples0, pr, quiet_thresh_db = 40., samples1 = None):
   if pr.normalize_rms:
     samples0 = mu.normalize_rms(samples0)
@@ -310,8 +163,6 @@ def mix_sounds(samples0, pr, quiet_thresh_db = 40., samples1 = None):
 
   if pr.augment_rms:
     print 'Augmenting rms'
-    # scale0 = tf.random_uniform((shape(samples0, 0), 1, 1), 0.9, 1.1)
-    # scale1 = tf.random_uniform((shape(samples1, 0), 1, 1), 0.9, 1.1)
     db = 0.25
     scale0 = 2.**tf.random_uniform((shape(samples0, 0), 1, 1), -db, db)
     scale1 = 2.**tf.random_uniform((shape(samples1, 0), 1, 1), -db, db)
@@ -706,49 +557,6 @@ class Model:
 
       num_steps += 1
 
-def find_best_iter(pr, gpu, num_iters = 10, sample_rate = 10, dset_name = 'val'):
-  [gpu] = mu.set_gpus([gpu])
-  best_iter = (np.inf, '')
-  model_paths = sorted(
-    ut.glob(pj(pr.train_dir, 'slow', 'net*.index')), 
-    key = lambda x : int(x.split('-')[-1].split('.')[0]))[-5:]
-  model_paths = list(reversed(model_paths))
-  assert len(model_paths), 'no model paths at %s' % pj(pr.train_dir, 'slow', 'net*.index')
-  for model_path in model_paths:
-    model_path = model_path.split('.index')[0]
-    print model_path
-    clf = NetClf(pr, model_path, gpu = gpu)
-    clf.init()
-    if dset_name == 'train':
-      print 'train'
-      tf_files = sorted(ut.glob(pj(pr.train_list, '*.tf')))
-    elif dset_name == 'val':
-      tf_files = sorted(ut.glob(pj(pr.val_list, '*.tf')))
-    else:
-      raise RuntimeError()
-
-    import sep_eval
-    losses = []
-    for ims, _, pair in sep_eval.pair_data(tf_files, pr):
-      if abs(hash(pair['ytid_gt'])) % sample_rate == 0:
-        res = clf.predict_unmixed(ims, pair['samples_gt'], pair['samples_bg'])
-        # loss = np.mean(np.abs(res['spec_pred_fg'] - res['spec0']))
-        # loss += np.mean(np.abs(res['spec_pred_bg'] - res['spec1']))
-        loss = 0.
-        if 'pit' in pr.loss_types:
-          loss += pit_loss(
-            [res['spec0']], [res['spec1']],
-            [res['spec_pred_fg']], [res['spec_pred_bg']], pr)
-        if 'fg-bg' in pr.loss_types:
-          loss += np.mean(np.abs(res['spec_pred_fg'] - res['spec0']))
-          loss += np.mean(np.abs(res['spec_pred_bg'] - res['spec1']))
-        losses.append(loss)
-        print 'running:', np.mean(losses)
-        loss = np.mean(losses)
-    print model_path, 'Loss:', loss
-    best_iter = min(best_iter, (loss, model_path))
-  ut.write_lines(pj(pr.resdir, 'model_path.txt'), [best_iter[1]])
-
 def pit_loss(gt0, gt1, pred0, pred1, pr):
   losses = []
   weights = np.array([pr.l1_weight, pr.phase_weight])
@@ -763,66 +571,6 @@ def pit_loss(gt0, gt1, pred0, pred1, pr):
     losses.append(loss)
   print 'losses =', losses
   return np.min(losses)
-
-# def find_best_iter(pr, gpu, num_iters = 10, sample_rate = 10, dset_name = 'val'):
-#   [gpu] = mu.set_gpus([gpu])
-#   best_iter = (np.inf, '')
-#   model_paths = sorted(
-#     ut.glob(pj(pr.train_dir, 'slow', 'net*.index')), 
-#     key = lambda x : int(x.split('-')[-1].split('.')[0]))[-5:]
-#   model_paths = reversed(model_paths)
-#   for model_path in model_paths:
-#     model_path = model_path.split('.index')[0]
-#     print model_path
-#     clf = sep_eval.NetClf(pr, model_path, gpu = gpu)
-#     clf.init()
-#     if dset_name == 'train':
-#       print 'train'
-#       tf_files = sorted(ut.glob(pj(pr.train_list, '*.tf')))
-#     elif dset_name == 'val':
-#       tf_files = sorted(ut.glob(pj(pr.val_list, '*.tf')))
-#     else:
-#       raise RuntimeError()
-    
-#     losses = []
-#     for ims, _, pair in sep_eval.pair_data(tf_files, pr):
-#       if abs(hash(pair['ytid_gt'])) % sample_rate == 0:
-#         res = clf.predict_unmixed(ims, pair['samples_gt'], pair['samples_bg'])
-#         loss = np.mean(np.abs(res['spec_pred_fg'] - res['spec0']))
-#         loss += np.mean(np.abs(res['spec_pred_bg'] - res['spec1']))
-#         losses.append(loss)
-#         print 'running:', np.mean(losses)
-#     loss = np.mean(losses)
-#     print model_path, 'Loss:', loss
-#     best_iter = min(best_iter, (loss, model_path))
-#   ut.write_lines(pj(pr.resdir, 'model_path.txt'), [best_iter[1]])
-
-
-
-# def find_best_iter(pr, gpu, num_iters = 10, sample_rate = 10):
-#   [gpu] = mu.set_gpus([gpu])
-#   def f((model_path, gpu_num)):
-#     model_path = model_path.split('.index')[0]
-#     print model_path
-#     clf = sep_eval.NetClf(pr, model_path, gpu = gpu)
-#     clf.init()
-#     tf_files = sorted(ut.glob(pj(pr.val_list, '*.tf')))
-#     losses = []
-#     for ims, _, pair in sep_eval.pair_data(tf_files, pr):
-#       if abs(hash(pair['ytid_gt'])) % sample_rate == 0:
-#         res = clf.predict_unmixed(ims, pair['samples_gt'], pair['samples_bg'])
-#         loss = np.mean(np.abs(res['spec_pred_fg'] - res['spec0']))
-#         loss += np.mean(np.abs(res['spec_pred_bg'] - res['spec1']))
-#         losses.append(loss)
-#     loss = np.mean(losses)
-#     print model_path, 'Loss:', loss
-#     return (loss, model_path)
-#   model_files = sorted(
-#     ut.glob(pj(pr.train_dir, 'slow', 'net*.index')), 
-#     key = lambda x : int(x.split('-')[-1].split('.')[0]))[-5:]
-#   for model_file in ut.model_files
-#   ut.write_lines(pj(pr.resdir, 'model_path.txt'), [best_iter[1]])
-
 
 def moving_avg(name, x, vals, avg_win_size = 100, p = 0.99):
   vals[name] = p*vals.get(name, x) + (1 - p)*x
@@ -912,18 +660,6 @@ def istft(mag, phase, pr):
     frame_step = soundrep.stft_frame_step(pr),
     fft_length = soundrep.stft_num_fft(pr))
   return samples
-
-# def griffin_lim(mag, phase, pr):
-#   import soundrep
-#   if pr.log_spec:
-#     mag = soundrep.amp_from_db(mag)
-#   samples = soundrep.griffin_lim(
-#     make_complex(mag, phase), 
-#     frame_length = soundrep.stft_frame_length(pr),
-#     frame_step = soundrep.stft_frame_step(pr),
-#     num_fft = soundrep.stft_num_fft(pr),
-#     num_iters = 5)
-#   return samples
 
 def make_net(ims, sfs, spec, phase, pr, 
              reuse = True, train = True, 
@@ -1043,10 +779,6 @@ def make_net(ims, sfs, spec, phase, pr,
       else: 
         raise RuntimeError()
 
-      # if ut.hastrue(pr, 'griffin_lim'):
-      #   print 'using griffin-lim'
-      #   pred_wav = griffin_lim(pred_spec, pred_phase, pr)
-      # else:
       pred_wav = istft(pred_spec, pred_phase, pr)
       return pred_spec, pred_phase, pred_wav
 

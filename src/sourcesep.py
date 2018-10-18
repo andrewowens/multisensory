@@ -951,7 +951,7 @@ def make_net(ims, sfs, spec, phase, pr,
         i3d_net = sep_i3d.InceptionI3d(1)
         vid_net_full = ut.Struct(scales = i3d_net(ims, is_training = train))
     
-  with slim.arg_scope(unet_arg_scope(pr, reuse = reuse, train = train)): # test
+  with slim.arg_scope(unet_arg_scope(pr, reuse = reuse, train = train)): 
     acts = []
     def conv(*args, **kwargs):
       out = conv2d(*args, activation_fn = None, **kwargs)

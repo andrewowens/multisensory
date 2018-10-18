@@ -84,6 +84,7 @@ def conv3d(*args, **kwargs):
   return out
 
 def conv2d(*args, **kwargs):
+  print args, kwargs
   out = slim.conv2d(*args, **kwargs)
   print kwargs['scope'], '->', shape(out)
   return out
@@ -488,11 +489,11 @@ class NetClf:
         self.ims_resize_ph = tf.placeholder(
           tf.uint8, [1, pr.sampled_frames, None, None, 3])
         self.samples_ph = tf.placeholder(tf.float32, (1, pr.num_samples, 2))
-        self.net = make_net(self.ims_ph, self.samples_ph, pr, reuse = False)
+        self.net = make_net(self.ims_ph, self.samples_ph, pr, reuse = False, train = False)
         ims_resize = self.ims_resize_ph
         ims_resize = ed(tf.image.resize_images(ims_resize[0], (pr.crop_im_dim, pr.crop_im_dim)), 0)
         ims_resize.set_shape(shape(self.ims_ph))
-        self.net_resize = make_net(ims_resize, self.samples_ph, pr, reuse = True)
+        self.net_resize = make_net(ims_resize, self.samples_ph, pr, reuse = True, train = False)
         self.sess.run(tf.global_variables_initializer())
         tf.train.Saver().restore(self.sess, self.model_path)
         tf.get_default_graph().finalize()

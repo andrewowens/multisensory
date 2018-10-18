@@ -20,6 +20,11 @@ This release includes code and models for:
 pip install tensorflow     # for CPU evaluation only
 pip install tensorflow-gpu # for GPU support
 ```
+We used TensorFlow version 1.8, which can be installed with:
+```
+pip install tensorflow-gpu==1.8
+```
+
 - Install other python dependencies
 ```bash
 pip install numpy matplotlib pillow scipy
@@ -31,7 +36,7 @@ pip install numpy matplotlib pillow scipy
 ```
 
 ## Pretrained audio-visual features
-We have provided the features for our fused audio-visual network. These features were learned through self-supervised learning. Please see [src/shift_example.py](shift_example.py) for a simple example that uses these pretrained features.
+We have provided the features for our fused audio-visual network. These features were learned through self-supervised learning. Please see [shift_example.py](src/shift_example.py) for a simple example that uses these pretrained features.
 
 ## Audio-visual source separation
 To try the on/off-screen source separation model, run:

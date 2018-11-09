@@ -2714,7 +2714,7 @@ def parmap(f, xs, nproc = None):
   if 1:
     pool = multiprocessing.Pool(processes = nproc)
     try:
-      ret = pool.map_async(f, xs).get(10000000)
+      ret = pool.map_async(f, xs).get(100000)
     finally:
       pool.close()
     return ret

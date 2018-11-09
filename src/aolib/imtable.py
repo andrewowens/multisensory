@@ -10,7 +10,6 @@ def get_www_path():
   # set this to be the directory hosted by a public web server (if you have one)
   return None
 
-
 def show_table(table, title = None, rows_per_page = 100, show = False,
                base_dir = None, output_path = None, archive = False,
                use_www = True):

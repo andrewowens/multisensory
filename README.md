@@ -25,6 +25,7 @@ We used TensorFlow version 1.8, which can be installed with:
 pip install tensorflow-gpu==1.8
 ```
 
+
 - Install other python dependencies
 ```bash
 pip install numpy matplotlib pillow scipy
@@ -89,6 +90,9 @@ If you use this code in your research, please consider citing our paper:
   year={2018}
 }
 ```
+
+## Updates
+- 11/08/18: Fixed a bug in the class activation map example code. Added Tensorflow 1.9 compatibility.
 
 ## Acknowledgements
 Our *u*-net code draws from [this implementation](https://github.com/affinelayer/pix2pix-tensorflow) of [pix2pix](https://arxiv.org/abs/1611.07004).

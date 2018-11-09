@@ -30,7 +30,41 @@ def read_data(pr, gpus):
           splits[i][k] = s[i]
     return splits
 
-def arg_scope(pr,
+# need to have a separate 2d/3d arg_scopes for compatibility with tensorflow 1.9
+def arg_scope_3d(pr,
+              #weight_decay = 1e-5,
+              reuse = False, 
+              renorm = True,
+              train = True,
+              center = True):
+  scale = ut.hastrue(pr, 'bn_scale')
+  print 'bn scale:', scale
+  weight_decay = pr.weight_decay
+  print 'arg_scope train =', train
+  bn_prs = {
+    'decay': 0.9997,
+    'epsilon': 0.001,
+    'updates_collections': slim.ops.GraphKeys.UPDATE_OPS,
+    'scale' : scale,
+    'center' : center,
+    'is_training' : train,
+    'renorm' : renorm,
+  }
+  normalizer_fn = slim.batch_norm
+  normalizer_params = copy.copy(bn_prs)
+  normalizer_params['renorm'] = False
+  with slim.arg_scope([slim.batch_norm], **bn_prs):
+    with slim.arg_scope(
+      [slim.convolution],
+      weights_regularizer = slim.regularizers.l2_regularizer(weight_decay),
+      weights_initializer = slim.initializers.variance_scaling_initializer(),
+      activation_fn = tf.nn.relu,
+      normalizer_fn = normalizer_fn,
+      reuse = reuse,
+      normalizer_params = normalizer_params) as sc:
+      return sc
+
+def arg_scope_2d(pr,
               #weight_decay = 1e-5,
               reuse = False, 
               renorm = True,
@@ -51,28 +85,19 @@ def arg_scope(pr,
   }
   normalizer_fn = slim.batch_norm
   normalizer_params = bn_prs
+  normalizer_params_2d = copy.deepcopy(normalizer_params)
+  normalizer_params_2d['renorm'] = False
   with slim.arg_scope([slim.batch_norm], **bn_prs):
     with slim.arg_scope(
-      [slim.convolution],
+      [slim.conv2d],
       weights_regularizer = slim.regularizers.l2_regularizer(weight_decay),
       weights_initializer = slim.initializers.variance_scaling_initializer(),
+      #weights_initializer = tf.contrib.layers.xavier_initializer(),
       activation_fn = tf.nn.relu,
       normalizer_fn = normalizer_fn,
       reuse = reuse,
-      normalizer_params = normalizer_params):
-
-      normalizer_params_2d = copy.deepcopy(normalizer_params)
-      normalizer_params_2d['renorm'] = False
-      with slim.arg_scope(
-        [slim.conv2d],
-        weights_regularizer = slim.regularizers.l2_regularizer(weight_decay),
-        weights_initializer = slim.initializers.variance_scaling_initializer(),
-        #weights_initializer = tf.contrib.layers.xavier_initializer(),
-        activation_fn = tf.nn.relu,
-        normalizer_fn = normalizer_fn,
-        reuse = reuse,
-        normalizer_params = normalizer_params_2d) as sc:
-        return sc
+      normalizer_params = normalizer_params_2d) as sc:
+      return sc
  
 def conv3d(*args, **kwargs):
   out = slim.convolution(*args, **kwargs)
@@ -84,7 +109,6 @@ def conv3d(*args, **kwargs):
   return out
 
 def conv2d(*args, **kwargs):
-  print args, kwargs
   out = slim.conv2d(*args, **kwargs)
   print kwargs['scope'], '->', shape(out)
   return out
@@ -377,30 +401,37 @@ def my_fractional_pool(net, frac, n):
 
 
 def merge(sf_net, im_net, pr, reuse = None, train = True):
+  # fuse image and sound feature nets
   s0 = shape(sf_net)
   print 'frac:', float(shape(sf_net, 1)-1)/shape(im_net, 1)
-  sf_net = tf.nn.fractional_max_pool(sf_net, [1, float(shape(sf_net, 1)-1)/shape(im_net, 1), 1, 1])[0]
-  # print 'TEST'
-  # print [1, float(shape(sf_net, 1)-1)/shape(im_net, 1), 1, 1]
-  # sf_net = tf.nn.fractional_max_pool(sf_net, [1, float(shape(sf_net, 1)-1)/shape(im_net, 1), 1, 1], 
-  #                                    deterministic = not train)[0]
-  s1 = shape(sf_net)
-  sf_net = conv2d(sf_net, 128, [3, shape(sf_net, 2)], scope = 'sf/conv5_1')
-  sf_net = sf_net[:, :, shape(sf_net, 2)/2]
-  sf_net = ed(ed(sf_net, 2), 2)
-  sf_net = tf.tile(sf_net, [1, 1, shape(im_net, 2), shape(im_net, 3), 1])
-  if not pr.use_sound:
-    print 'Not using sound!'
-    sf_net = tf.zeros_like(sf_net)
-  net = tf.concat([im_net, sf_net], 4)
-  print 'sf_net shape before merge: %s, and after merge: %s' % (s0, s1)
+  if train:
+    sf_net = tf.nn.fractional_max_pool(sf_net, [1, float(shape(sf_net, 1)-1)/shape(im_net, 1), 1, 1])[0]
+  else:
+    # deterministic (note: we didn't do this for the experiments in the paper -- only for the release)
+    sf_net = tf.nn.fractional_max_pool(
+      sf_net, [1, float(shape(sf_net, 1)-1)/shape(im_net, 1), 1, 1],
+      deterministic = (not train), pseudo_random = (not train), 
+      seed = (0 if train else 1), seed2 = (0 if train else 2))[0]
 
-  short = tf.concat([net[..., :64], net[..., -64:]], 4)
-  net = conv3d(net, 512, [1, 1, 1], scope = 'im/merge1')
-  net = conv3d(net, 128, [1, 1, 1], scope = 'im/merge2', 
-               normalizer_fn = None, activation_fn = None)
-  net = slim.batch_norm(net + short, scope = 'im/%s_bn' % 'merge_block', 
-                        activation_fn = tf.nn.relu, reuse = reuse)
+  s1 = shape(sf_net)
+  with slim.arg_scope(arg_scope_2d(pr = pr, reuse = reuse, train = train)):
+    sf_net = conv2d(sf_net, 128, [3, shape(sf_net, 2)], scope = 'sf/conv5_1')
+  with slim.arg_scope(arg_scope_3d(pr = pr, reuse = reuse, train = train)):
+    sf_net = sf_net[:, :, shape(sf_net, 2)/2]
+    sf_net = ed(ed(sf_net, 2), 2)
+    sf_net = tf.tile(sf_net, [1, 1, shape(im_net, 2), shape(im_net, 3), 1])
+    if not pr.use_sound:
+      print 'Not using sound!'
+      sf_net = tf.zeros_like(sf_net)
+    net = tf.concat([im_net, sf_net], 4)
+    print 'sf_net shape before merge: %s, and after merge: %s' % (s0, s1)
+
+    short = tf.concat([net[..., :64], net[..., -64:]], 4)
+    net = conv3d(net, 512, [1, 1, 1], scope = 'im/merge1')
+    net = conv3d(net, 128, [1, 1, 1], scope = 'im/merge2', 
+                 normalizer_fn = None, activation_fn = None)
+    net = slim.batch_norm(net + short, scope = 'im/%s_bn' % 'merge_block', 
+                          activation_fn = tf.nn.relu, reuse = reuse)
 
   return net
 
@@ -410,7 +441,8 @@ def make_net(ims, sfs, pr, im_net = None, reuse = True, train = True):
 
   im_scales = []
   scales = []
-  with slim.arg_scope(arg_scope(pr = pr, reuse = reuse, train = train)):
+  with slim.arg_scope(arg_scope_2d(pr = pr, reuse = reuse, train = train)):
+    # sound feature subnetwork
     sf_net = normalize_sfs(sfs)
     sf_net = ed(sf_net, 2)
     sf_net = conv2d(sf_net, 64, [65, 1], scope = 'sf/conv1_1', stride = 4, reuse = reuse)
@@ -420,6 +452,7 @@ def make_net(ims, sfs, pr, im_net = None, reuse = True, train = True):
     sf_net = block2(sf_net, 128, [15, 1], 'sf/conv3_1', stride = [4, 1], reuse = reuse)
     sf_net = block2(sf_net, 256, [15, 1], 'sf/conv4_1', stride = [4, 1], reuse = reuse)
 
+  with slim.arg_scope(arg_scope_3d(pr = pr, reuse = reuse, train = train)):
     if im_net is None:
       im_net = mu.normalize_ims(ims)
       im_net = conv3d(im_net, 64, [5, 7, 7], scope = 'im/conv1', stride = 2)
@@ -430,7 +463,9 @@ def make_net(ims, sfs, pr, im_net = None, reuse = True, train = True):
       scales.append(im_net)
       im_scales.append(im_net)
 
-    net = merge(sf_net, im_net, pr, reuse, train = train)
+  net = merge(sf_net, im_net, pr, reuse, train = train)
+
+  with slim.arg_scope(arg_scope_3d(pr = pr, reuse = reuse, train = train)):
     net = block3(net, 128, [3, 3, 3], 'im/conv3_1', stride = 1, reuse = reuse)
     net = block3(net, 128, [3, 3, 3], 'im/conv3_2', stride = 1, reuse = reuse)
     scales.append(net)
